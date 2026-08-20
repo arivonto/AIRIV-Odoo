@@ -1,0 +1,106 @@
+
+    const menu = mod.matchedMenu;
+
+    // Standard Model Fallback Map
+    const fallbackMap: { [key: string]: string } = {
+      'purchase': 'purchase.order',
+      'sales': 'sale.order',
+      'sale': 'sale.order',
+      'invoicing': 'account.move',
+      'accounting': 'account.move',
+      'account': 'account.move',
+      'inventory': 'stock.picking',
+      'stock': 'stock.picking',
+      'crm': 'crm.lead',
+      'project': 'project.task',
+      'employees': 'hr.employee',
+      'hr': 'hr.employee',
+      'contacts': 'res.partner',
+      'discuss': 'mail.message'
+    };
+
+    const resolveFallback = (name: string) => {
+       if (!name) return null;
+       const key = name.toLowerCase();
+       for (const [k, v] of Object.entries(fallbackMap)) {
+          if (key === k || key.startsWith(k + ' ')) return v;
+       }
+       for (const [k, v] of Object.entries(fallbackMap)) {
+          if (key.includes(k)) return v;
+       }
+       return null;
+    };
+
+    const fallbackModel = resolveFallback(menu?.complete_name || menu?.name || mod.shortdesc || mod.name);
+
+    if (!menu) {
+      if (fallbackModel) {
+        setActiveAction({
+          name: mod.shortdesc,
+          res_model: fallbackModel,
+          domain: '[]',
+          context: '{}',
+          views: [['list', 'tree'], ['form', 'form']]
+        });
+        return;
+      }
+      setActiveAction({ error: `The module "${mod.shortdesc}" does not have a mapped UI menu or standard fallback model. It may be a technical or background module.` });
+      return;
+    }
+
+    let actionToResolve = menu.action;
+    
+    // Recursive Child Action Resolution (Deep drill down)
+    if (!actionToResolve && menu.child_id && menu.child_id.length > 0) {
+      try {
+        let currentChildIds = menu.child_id;
+        while (currentChildIds && currentChildIds.length > 0 && !actionToResolve) {
+          const childrenData = await odooClient.executeKw('ir.ui.menu', 'search_read', [[['id', 'in', currentChildIds]]], {
+            fields: ['id', 'name', 'action', 'child_id'],
+            order: 'sequence'
+          });
+          
+          const validChild = childrenData.find((c: any) => c.action && typeof c.action === 'string' && c.action.includes('ir.actions.act_window'));
+          
+          if (validChild) {
+            actionToResolve = validChild.action;
+            break;
+          } else if (childrenData.length > 0) {
+            const nextIds = childrenData.reduce((acc: number[], curr: any) => {
+              if (curr.child_id && Array.isArray(curr.child_id)) {
+                return [...acc, ...curr.child_id];
+              }
+              return acc;
+            }, []);
+            currentChildIds = nextIds;
+          } else {
+            currentChildIds = [];
+          }
+        }
+      } catch (e) {
+        console.warn('Failed resolving child actions', e);
+      }
+    }
+
+    // Action ID Parser and Resolution
+    if (actionToResolve) {
+      const [actionType, actionId] = typeof actionToResolve === 'string' ? actionToResolve.split(',') : [null, null];
+      
+      if (actionType === 'ir.actions.act_window' && actionId) {
+        try {
+          const actionData = await odooClient.executeKw(actionType, 'search_read', [[['id', '=', parseInt(actionId)]]], {
+            fields: ['name', 'res_model', 'domain', 'context', 'views'],
+            limit: 1
+          });
+
+          if (actionData.length > 0 && actionData[0].res_model) {
+            setActiveAction(actionData[0]);
+            return;
+          }
+        } catch (e: any) {
+          console.warn(`Failed to resolve action ${actionId}: ${e.message}`);
+        }
+      }
+    }
+
+    // Apply Fallback if action failed or wasn't present

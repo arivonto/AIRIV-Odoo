@@ -24,9 +24,19 @@ export function DynamicFormView({ model, id, onClose }: DynamicFormViewProps) {
     setError('');
     try {
       // 1. Get field definitions
-      const fieldsData = await odooClient.executeKw(model, 'fields_get', [], {
-        attributes: ['string', 'type', 'selection', 'relation', 'required', 'readonly']
-      });
+      let fieldsData: any = {};
+      try {
+        fieldsData = await odooClient.executeKw(model, 'fields_get', [], {
+          attributes: ['string', 'type', 'selection', 'relation', 'required', 'readonly']
+        });
+      } catch (fErr: any) {
+        console.warn(`fields_get failed for ${model}: ${fErr.message}.`);
+        fieldsData = {
+          id: { string: 'ID', type: 'integer', readonly: true },
+          name: { string: 'Name', type: 'char' },
+          display_name: { string: 'Display Name', type: 'char', readonly: true }
+        };
+      }
       setFields(fieldsData);
 
       // 2. Load record if editing

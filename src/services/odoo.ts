@@ -4,6 +4,9 @@ export interface OdooConfig {
   username: string;
   apiKey: string;
   uid: number | null;
+  session_id?: string | null;
+  name?: string | null;
+  company_id?: number | null;
   useMock: boolean;
 }
 
@@ -14,6 +17,9 @@ class OdooClient {
     username: '',
     apiKey: '',
     uid: null,
+    session_id: null,
+    name: null,
+    company_id: null,
     useMock: false,
   };
 
@@ -30,6 +36,9 @@ class OdooClient {
       username: '',
       apiKey: '',
       uid: null,
+      session_id: null,
+      name: null,
+      company_id: null,
       useMock: true,
     };
     const stored = sessionStorage.getItem('odoo_config');
@@ -57,6 +66,9 @@ class OdooClient {
       username: '',
       apiKey: '',
       uid: null,
+      session_id: null,
+      name: null,
+      company_id: null,
       useMock: false,
     };
     sessionStorage.removeItem('odoo_config');
@@ -75,7 +87,7 @@ class OdooClient {
       return this.mockRpc(service, method, args);
     }
 
-    const { url } = this.config;
+    const { url, session_id } = this.config;
     if (!url) throw new Error('Odoo URL is not configured');
 
     const endpoint = '/api/jsonrpc';
@@ -93,6 +105,10 @@ class OdooClient {
 
     const startTime = performance.now();
     try {
+      // Include session_id in a Cookie header if we were direct, but since we use a proxy,
+      // Odoo handles JSON-RPC without session if we pass apiKey via common, or if we need
+      // session for web endpoints. Wait, standard execute_kw does not require session_id,
+      // just uid and password/apiKey. So we leave it as is for `execute_kw`.
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -120,7 +136,7 @@ class OdooClient {
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        throw new Error(`Invalid JSON response. The server returned HTML instead of JSON (likely a Cloudflare error page or offline tunnel). Preview: ${responseText.slice(0, 50)}...`);
+        throw new Error(`Invalid JSON response. The server returned HTML instead of JSON. Preview: ${responseText.slice(0, 50)}...`);
       }
       
       if (data.error) {
@@ -145,18 +161,70 @@ class OdooClient {
 
   async authenticate(db: string, username: string, apiKey: string) {
     if (this.config.useMock) {
-      this.saveConfig({ db, username, apiKey, uid: 1, useMock: true });
-      return 1;
+      const mockResult = { uid: 1, session_id: 'mock_session_123', name: 'Admin (Mock)', company_id: 1 };
+      this.saveConfig({ db, username, apiKey, ...mockResult, useMock: true });
+      return mockResult;
     }
 
-    const uid = await this.jsonRpc('common', 'authenticate', [db, username, apiKey, {}]);
+    const { url } = this.config;
+    if (!url) throw new Error('Odoo URL is not configured');
+
+    const endpoint = '/api/web/session/authenticate';
     
-    if (!uid) {
-      throw new Error('Authentication failed: Invalid database, username, or API key.');
+    const payload = {
+      jsonrpc: '2.0',
+      method: 'call',
+      params: {
+        db: db,
+        login: username,
+        password: apiKey
+      },
+      id: Math.floor(Math.random() * 1000000000),
+    };
+
+    const startTime = performance.now();
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-odoo-url': url
+        },
+        body: JSON.stringify(payload),
+      });
+
+      this.latency = Math.round(performance.now() - startTime);
+
+      const data = await response.json();
+      
+      if (data.error) {
+        const errorMsg = data.error.data?.message || data.error.message || 'Authentication failed';
+        throw new Error(errorMsg);
+      }
+
+      const result = data.result;
+      
+      if (!result || !result.uid) {
+        throw new Error('Authentication failed: Invalid credentials.');
+      }
+      
+      this.saveConfig({ 
+        db, 
+        username, 
+        apiKey, 
+        uid: result.uid,
+        session_id: result.session_id,
+        name: result.name,
+        company_id: result.company_id,
+        useMock: false 
+      });
+      
+      return result;
+    } catch (error: any) {
+      this.latency = Math.round(performance.now() - startTime);
+      throw new Error(`Auth failed: ${error.message || 'Unknown network error'}`);
     }
-    
-    this.saveConfig({ db, username, apiKey, uid, useMock: false });
-    return uid;
   }
 
   async executeKw(model: string, method: string, args: any[] = [], kwargs: any = {}) {
@@ -172,7 +240,8 @@ class OdooClient {
 
     // Auto-authenticate if we have credentials but no active session UID
     if (!uid) {
-      uid = await this.authenticate(db, username, apiKey);
+      const authResult = await this.authenticate(db, username, apiKey);
+      uid = authResult.uid;
     }
 
     return this.jsonRpc('object', 'execute_kw', [
@@ -184,6 +253,129 @@ class OdooClient {
       args,
       kwargs
     ]);
+  }
+
+  async loadAction(actionId: number | string) {
+    if (this.config.useMock) {
+      return {
+        res_model: 'mock.model',
+        name: 'Mock Action',
+        type: 'ir.actions.act_window',
+        views: [['list', 'tree'], ['form', 'form']],
+        domain: [],
+        context: {}
+      };
+    }
+
+    const { url, session_id } = this.config;
+    if (!url) throw new Error('Odoo URL is not configured');
+    
+    // Fallback to execute_kw if no session_id is available (though this might fail for non-admins)
+    if (!session_id) {
+       console.warn('Session ID is missing, falling back to executeKw for action load.');
+       const actionData = await this.executeKw('ir.actions.act_window', 'search_read', [[['id', '=', typeof actionId === 'string' ? parseInt(actionId, 10) : actionId]]], {
+          limit: 1
+       });
+       return actionData.length > 0 ? actionData[0] : null;
+    }
+
+    const endpoint = '/api/web/action/load';
+    
+    const payload = {
+      jsonrpc: '2.0',
+      method: 'call',
+      params: {
+        action_id: typeof actionId === 'string' ? parseInt(actionId, 10) : actionId,
+        additional_context: {}
+      },
+      id: Math.floor(Math.random() * 1000000000),
+    };
+
+    const startTime = performance.now();
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-odoo-url': url,
+          'x-odoo-session-id': session_id
+        },
+        body: JSON.stringify(payload),
+      });
+
+      this.latency = Math.round(performance.now() - startTime);
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.data?.message || data.error.message || 'Action load failed');
+      }
+
+      return data.result;
+    } catch (error: any) {
+      this.latency = Math.round(performance.now() - startTime);
+      throw new Error(`Load action failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  async loadMenus() {
+    if (this.config.useMock) {
+      return {
+        root: {
+          id: 'root',
+          children: [1, 2, 3]
+        },
+        1: { id: 1, name: 'Sales', actionID: 101, appID: 1, children: [11], xmlid: 'sale.menu_root' },
+        11: { id: 11, name: 'Quotations', actionID: 101, appID: 1, children: [], xmlid: 'sale.menu_quotations' },
+        2: { id: 2, name: 'CRM', actionID: 102, appID: 2, children: [12], xmlid: 'crm.crm_menu_root' },
+        12: { id: 12, name: 'Pipeline', actionID: 102, appID: 2, children: [], xmlid: 'crm.crm_menu_pipeline' },
+        3: { id: 3, name: 'Invoicing', actionID: 103, appID: 3, children: [13], xmlid: 'account.menu_finance' },
+        13: { id: 13, name: 'Invoices', actionID: 103, appID: 3, children: [], xmlid: 'account.menu_finance_receivables' }
+      };
+    }
+
+    const { url, session_id } = this.config;
+    if (!url) throw new Error('Odoo URL is not configured');
+    if (!session_id) throw new Error('Session ID is missing, please re-authenticate.');
+
+    const endpoint = '/api/web/menu/load_menus';
+    
+    const payload = {
+      jsonrpc: '2.0',
+      method: 'call',
+      params: {
+        root_id: false
+      },
+      id: Math.floor(Math.random() * 1000000000),
+    };
+
+    const startTime = performance.now();
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-odoo-url': url,
+          'x-odoo-session-id': session_id
+        },
+        body: JSON.stringify(payload),
+      });
+
+      this.latency = Math.round(performance.now() - startTime);
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.data?.message || data.error.message || 'Menu load failed');
+      }
+
+      return data.result;
+    } catch (error: any) {
+      this.latency = Math.round(performance.now() - startTime);
+      throw new Error(`Load menus failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   // Helper Methods for backward compatibility or direct calls
@@ -241,12 +433,27 @@ class OdooClient {
               { id: 201, name: 'ERP Enterprise License', default_code: 'LIC-ERP', list_price: 15000000, qty_available: 99, standard_price: 0 },
               { id: 202, name: 'Server Hardware Type A', default_code: 'HW-SRV-A', list_price: 35000000, qty_available: 2, standard_price: 25000000 },
             ]);
+          
+          } else if (model === 'ir.module.category' && action === 'search_read') {
+            resolve([
+              { id: 1, name: 'Sales', parent_id: false, sequence: 10 },
+              { id: 2, name: 'Accounting', parent_id: false, sequence: 20 },
+              { id: 3, name: 'Inventory', parent_id: false, sequence: 30 },
+              { id: 4, name: 'Hidden', parent_id: false, sequence: 100 },
+            ]);
+          } else if (model === 'ir.module.module' && action === 'search_read') {
+            resolve([
+              { id: 1, name: 'sale_management', shortdesc: 'Sales', category_id: [1, 'Sales'], icon_image: false, sequence: 10 },
+              { id: 2, name: 'crm', shortdesc: 'CRM', category_id: [1, 'Sales'], icon_image: false, sequence: 15 },
+              { id: 3, name: 'account', shortdesc: 'Invoicing', category_id: [2, 'Accounting'], icon_image: false, sequence: 10 },
+              { id: 4, name: 'stock', shortdesc: 'Inventory', category_id: [3, 'Inventory'], icon_image: false, sequence: 10 },
+            ]);
           } else if (model === 'ir.ui.menu' && action === 'search_read') {
             resolve([
-              { id: 1, name: 'Sales', complete_name: 'Sales', action: 'ir.actions.act_window,101', child_id: [11], parent_id: false },
-              { id: 2, name: 'CRM', complete_name: 'CRM', action: 'ir.actions.act_window,102', child_id: [12], parent_id: false },
-              { id: 3, name: 'Invoicing', complete_name: 'Invoicing', action: 'ir.actions.act_window,103', child_id: [13], parent_id: false },
-              { id: 4, name: 'Settings (No Action)', complete_name: 'Settings', action: false, child_id: [14], parent_id: false },
+              { id: 1, name: 'Sales', complete_name: 'Sales', action: 'ir.actions.act_window,101', child_id: [11], parent_id: false, web_icon: 'sale_management,static/description/icon.png', sequence: 10 },
+              { id: 2, name: 'CRM', complete_name: 'CRM', action: 'ir.actions.act_window,102', child_id: [12], parent_id: false, web_icon: 'crm,static/description/icon.png', sequence: 15 },
+              { id: 3, name: 'Invoicing', complete_name: 'Invoicing', action: 'ir.actions.act_window,103', child_id: [13], parent_id: false, web_icon: 'account,static/description/icon.png', sequence: 20 },
+              { id: 4, name: 'Settings (No Action)', complete_name: 'Settings', action: false, child_id: [14], parent_id: false, web_icon: 'base,static/description/icon.png', sequence: 100 },
             ]);
           } else if (model === 'ir.actions.act_window' && action === 'search_read') {
             const domainArg = params[5] && params[5][0] ? params[5][0] : [];

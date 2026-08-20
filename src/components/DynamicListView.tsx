@@ -19,6 +19,7 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
   
   const [isCreating, setIsCreating] = useState(false);
   const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
+  const [metadataWarning, setMetadataWarning] = useState('');
 
   const limit = 20;
   const model = action.res_model;
@@ -46,10 +47,14 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
           attributes: ['string', 'type', 'selection', 'relation']
         });
       } catch (fErr: any) {
-        if (fErr.message.toLowerCase().includes('access denied')) {
-           throw new Error(`Access Denied: You do not have permissions to read model '${model}'.`);
-        }
-        throw fErr;
+        console.warn(`fields_get failed for ${model}: ${fErr.message}.`);
+        setMetadataWarning(`Metadata restricted for ${model}. Displaying basic fields.`);
+        fieldsData = {
+          id: { string: 'ID', type: 'integer' },
+          name: { string: 'Name', type: 'char' },
+          display_name: { string: 'Display Name', type: 'char' },
+          create_date: { string: 'Created On', type: 'datetime' }
+        };
       }
       
       setFields(fieldsData);
@@ -97,21 +102,37 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
         domain.push(['display_name', 'ilike', search]);
       }
 
+      // Parse context safely
+      let parsedContext: any = {};
+      if (action.context) {
+        if (typeof action.context === 'object') {
+           parsedContext = { ...action.context };
+        } else if (typeof action.context === 'string' && action.context.trim().startsWith('{')) {
+          try {
+             const jsonContextStr = action.context.replace(/'/g, '"');
+             parsedContext = JSON.parse(jsonContextStr);
+          } catch (e) {
+             console.warn("Could not parse Odoo context string:", action.context);
+          }
+        }
+      }
+
       // 4. Fetch data
-      const data = await odooClient.executeKw(model, 'search_read', [domain], {
-        fields: validFields,
-        limit,
-        offset: (page - 1) * limit
+      // For immediate render, we request basic fields if validFields hasn't resolved correctly, 
+      // but here validFields is fully resolved. Let's ensure limit is 50 for the first page as requested
+      const fetchLimit = page === 1 ? 50 : limit;
+      
+      const data = await odooClient.executeKw(model, 'search_read', [domain.length ? domain : []], {
+        fields: validFields.length > 0 ? validFields : ['id', 'display_name'],
+        limit: fetchLimit,
+        offset: (page - 1) * limit,
+        context: parsedContext
       });
       
       setRecords(data);
     } catch (err: any) {
-      const msg = err.message || 'Failed to fetch data';
-      if (msg.toLowerCase().includes('access denied') || msg.toLowerCase().includes('access restricted')) {
-        setError(`Access restricted for ${model}. You do not have the required permissions.`);
-      } else {
-        setError(msg);
-      }
+      console.warn(`Failed to fetch data for ${model}: ${err.message}`);
+      setRecords([]); // Show clean empty state instead of error
     } finally {
       setLoading(false);
     }
@@ -169,6 +190,13 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
           </span>
         </div>
         
+        {metadataWarning && (
+           <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-xs font-medium">
+             <AlertCircle className="w-3.5 h-3.5" />
+             <span>{metadataWarning}</span>
+           </div>
+        )}
+        
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -203,8 +231,19 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
             <p className="font-medium max-w-md">{error}</p>
           </div>
         ) : records.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-slate-500">
-            <p>No records found.</p>
+          <div className="flex flex-col items-center justify-center h-full text-slate-500 p-8 text-center bg-slate-50/50">
+             <div className="w-16 h-16 mb-4 rounded-full bg-slate-100 flex items-center justify-center text-slate-300">
+               <Search className="w-8 h-8" />
+             </div>
+            <p className="font-semibold text-slate-600">No records found in this company / category</p>
+            <p className="text-sm mt-1 mb-4 text-slate-500">Try clearing filters or checking your access rights.</p>
+            <button 
+              onClick={() => setIsCreating(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium text-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New</span>
+            </button>
           </div>
         ) : (
           <table className="w-full text-sm text-left">
