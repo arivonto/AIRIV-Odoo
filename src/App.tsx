@@ -21,10 +21,21 @@ export default function App() {
     const interval = setInterval(() => {
       setLatency(odooClient.getLatency());
       const currentConfig = odooClient.getConfig();
-      setIsConnected(!!currentConfig.uid || currentConfig.useMock === true);
+      const hasAuth = !!currentConfig.uid || currentConfig.useMock === true;
+      setIsConnected(hasAuth);
+      
+      if (!hasAuth) {
+        setActiveTab('settings');
+      }
     }, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleDisconnect = () => {
+    odooClient.clearConfig();
+    setIsConnected(false);
+    setActiveTab('settings');
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -115,6 +126,15 @@ export default function App() {
             <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-semibold border border-purple-200">
               MOCK
             </span>
+          )}
+          
+          {isConnected && !odooClient.getConfig().useMock && (
+            <button 
+              onClick={handleDisconnect}
+              className="text-xs font-semibold text-rose-600 hover:text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded px-3 py-1 transition-colors"
+            >
+              Disconnect
+            </button>
           )}
         </div>
       </header>

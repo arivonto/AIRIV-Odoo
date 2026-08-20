@@ -26,6 +26,7 @@ export interface AccountMove {
   amount_total: number;
   amount_untaxed: number;
   amount_tax: number;
+  amount_residual?: number;
   payment_state: string;
   state: string;
 }
@@ -37,4 +38,5 @@ export interface ProductTemplate {
   list_price: number;
   qty_available: number;
   standard_price: number;
+  categ_id?: [number, string] | false;
 }

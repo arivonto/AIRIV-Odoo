@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { odooClient } from '../services/odoo';
-import { Server, User, Key, Database, CheckCircle, XCircle } from 'lucide-react';
+import { Server, User, Key, Database, CheckCircle, XCircle, LogOut, Eye, EyeOff } from 'lucide-react';
 
 interface SettingsProps {
   onConnect: () => void;
@@ -13,16 +13,21 @@ export function Settings({ onConnect }: SettingsProps) {
   const [apiKey, setApiKey] = useState('');
   const [useMock, setUseMock] = useState(true);
   
+  const [showApiKey, setShowApiKey] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{success: boolean; message: string} | null>(null);
 
-  useEffect(() => {
+  const loadCurrentConfig = () => {
     const config = odooClient.getConfig();
     setUrl(config.url || '');
     setDb(config.db || '');
     setUsername(config.username || '');
     setApiKey(config.apiKey || '');
     setUseMock(config.useMock ?? true);
+  };
+
+  useEffect(() => {
+    loadCurrentConfig();
   }, []);
 
   const handleTestConnection = async (e: React.FormEvent) => {
@@ -35,8 +40,8 @@ export function Settings({ onConnect }: SettingsProps) {
     
     try {
       const uid = await odooClient.authenticate(db, username, apiKey);
-      if (uid) {
-        setTestResult({ success: true, message: `Successfully connected! UID: ${uid}` });
+      if (uid || useMock) {
+        setTestResult({ success: true, message: `Successfully connected! ${uid ? 'UID: ' + uid : ''}` });
         onConnect();
       } else {
         setTestResult({ success: false, message: 'Authentication failed. Please check credentials.' });
@@ -48,11 +53,31 @@ export function Settings({ onConnect }: SettingsProps) {
     }
   };
 
+  const handleDisconnect = () => {
+    odooClient.clearConfig();
+    loadCurrentConfig();
+    setTestResult(null);
+  };
+
+  const config = odooClient.getConfig();
+  const hasActiveSession = !!config.uid;
+
   return (
     <div className="max-w-2xl bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="border-b border-slate-200 bg-slate-50 p-6">
-        <h2 className="text-xl font-semibold text-slate-800">Odoo JSON-RPC Configuration</h2>
-        <p className="text-slate-500 text-sm mt-1">Connect your dashboard to an Odoo 18 Community backend.</p>
+      <div className="border-b border-slate-200 bg-slate-50 p-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-800">Odoo JSON-RPC Configuration</h2>
+          <p className="text-slate-500 text-sm mt-1">Connect your dashboard to an Odoo 18 Community backend.</p>
+        </div>
+        {hasActiveSession && (
+          <button
+            onClick={handleDisconnect}
+            className="flex items-center gap-2 px-3 py-2 border border-rose-200 bg-rose-50 text-rose-700 rounded-lg hover:bg-rose-100 transition-colors text-sm font-medium"
+          >
+            <LogOut className="w-4 h-4" />
+            Disconnect
+          </button>
+        )}
       </div>
       
       <form onSubmit={handleTestConnection} className="p-6 space-y-6">
@@ -132,13 +157,20 @@ export function Settings({ onConnect }: SettingsProps) {
                   <Key className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
-                  type="password"
+                  type={showApiKey ? "text" : "password"}
                   required={!useMock}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
+                  className="block w-full pl-10 pr-10 py-2 border border-slate-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white"
                   placeholder="••••••••••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none"
+                >
+                  {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           </div>

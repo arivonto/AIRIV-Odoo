@@ -9,7 +9,16 @@ class OdooClient {
   }
 
   loadConfig(): OdooConfig {
-    const stored = localStorage.getItem('odoo_config');
+    const defaultConfig: OdooConfig = {
+      url: '',
+      db: '',
+      username: '',
+      apiKey: '',
+      uid: null,
+      useMock: false,
+    };
+
+    const stored = sessionStorage.getItem('odoo_config');
     if (stored) {
       try {
         return JSON.parse(stored);
@@ -17,19 +26,24 @@ class OdooClient {
         console.error('Failed to parse odoo config');
       }
     }
-    return {
-      url: 'https://odoo-api.airiv.id',
-      db: '',
-      username: '',
-      apiKey: '',
-      uid: null,
-      useMock: true, // Default to mock data
-    };
+    return defaultConfig;
   }
 
   saveConfig(newConfig: Partial<OdooConfig>) {
     this.config = { ...this.config, ...newConfig };
-    localStorage.setItem('odoo_config', JSON.stringify(this.config));
+    sessionStorage.setItem('odoo_config', JSON.stringify(this.config));
+  }
+
+  clearConfig() {
+    this.config = {
+      url: '',
+      db: '',
+      username: '',
+      apiKey: '',
+      uid: null,
+      useMock: false,
+    };
+    sessionStorage.removeItem('odoo_config');
   }
 
   getConfig() {
@@ -48,7 +62,7 @@ class OdooClient {
     const { url } = this.config;
     if (!url) throw new Error('Odoo URL is not configured');
 
-    const endpoint = `${url.replace(/\/$/, '')}/jsonrpc`;
+    const endpoint = '/api/jsonrpc';
     
     const payload = {
       jsonrpc: '2.0',
@@ -67,26 +81,48 @@ class OdooClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-odoo-url': url
         },
         body: JSON.stringify(payload),
       });
 
       this.latency = Math.round(performance.now() - startTime);
 
+      let data;
+      const responseText = await response.text();
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        let errorMsg = `HTTP error! status: ${response.status}`;
+        try {
+          const errData = JSON.parse(responseText);
+          if (errData.error?.message) errorMsg = errData.error.message;
+        } catch (e) {} // Not JSON
+        throw new Error(errorMsg);
       }
 
-      const data = await response.json();
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Invalid JSON response. The server returned HTML instead of JSON (likely a Cloudflare error page or offline tunnel). Preview: ${responseText.slice(0, 50)}...`);
+      }
       
       if (data.error) {
-        throw new Error(data.error.data?.message || data.error.message || 'Unknown Odoo error');
+        const errorMsg = data.error.data?.message || data.error.message || 'Unknown Odoo error';
+        if (errorMsg.toLowerCase().includes('access denied') || errorMsg.toLowerCase().includes('authentication') || errorMsg.toLowerCase().includes('expected singleton')) {
+          this.clearConfig();
+          throw new Error(`Authentication Expired: ${errorMsg}`);
+        }
+        throw new Error(errorMsg);
       }
 
       return data.result;
-    } catch (error) {
+    } catch (error: any) {
       this.latency = Math.round(performance.now() - startTime);
-      throw error;
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error(`Network error: Could not reach Odoo via proxy. Ensure your Cloudflare tunnel is running and reachable. Details: ${error.message}`);
+      }
+      throw new Error(`Odoo RPC failed: ${error.message || 'Unknown network error'}`);
     }
   }
 
@@ -106,14 +142,19 @@ class OdooClient {
   }
 
   async executeKw(model: string, method: string, args: any[] = [], kwargs: any = {}) {
-    const { db, uid, apiKey, useMock } = this.config;
+    let { db, uid, apiKey, useMock, username } = this.config;
     
     if (useMock) {
       return this.mockRpc('object', 'execute_kw', [db, uid, apiKey, model, method, args, kwargs]);
     }
 
-    if (!db || !uid || !apiKey) {
+    if (!db || !apiKey) {
       throw new Error('Not authenticated. Please configure settings first.');
+    }
+
+    // Auto-authenticate if we have credentials but no active session UID
+    if (!uid) {
+      uid = await this.authenticate(db, username, apiKey);
     }
 
     return this.jsonRpc('object', 'execute_kw', [
@@ -129,9 +170,9 @@ class OdooClient {
 
   // Helper Methods
   async getLeads() {
-    return this.executeKw('crm.lead', 'search_read', [[]], {
+    return this.executeKw('crm.lead', 'search_read', [[['active', '=', true]]], {
       fields: ['id', 'name', 'partner_id', 'stage_id', 'expected_revenue', 'probability', 'phone', 'email_from'],
-      limit: 100,
+      limit: 20,
     });
   }
 
@@ -144,16 +185,16 @@ class OdooClient {
   }
 
   async getInvoices() {
-    return this.executeKw('account.move', 'search_read', [[['move_type', '=', 'out_invoice']]], {
-      fields: ['id', 'name', 'partner_id', 'invoice_date', 'amount_total', 'amount_untaxed', 'amount_tax', 'payment_state', 'state'],
-      limit: 100,
+    return this.executeKw('account.move', 'search_read', [[['move_type', 'in', ['out_invoice', 'out_refund']]]], {
+      fields: ['id', 'name', 'partner_id', 'invoice_date', 'amount_total', 'amount_untaxed', 'amount_tax', 'amount_residual', 'payment_state', 'state'],
+      limit: 25,
     });
   }
 
   async getProducts() {
-    return this.executeKw('product.template', 'search_read', [[]], {
-      fields: ['id', 'name', 'default_code', 'list_price', 'qty_available', 'standard_price'],
-      limit: 100,
+    return this.executeKw('product.template', 'search_read', [[['sale_ok', '=', true]]], {
+      fields: ['id', 'name', 'default_code', 'list_price', 'qty_available', 'standard_price', 'categ_id'],
+      limit: 30,
     });
   }
 
