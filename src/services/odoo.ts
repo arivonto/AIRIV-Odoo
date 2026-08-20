@@ -1,32 +1,48 @@
-import { OdooConfig } from '../types';
+export interface OdooConfig {
+  url: string;
+  db: string;
+  username: string;
+  apiKey: string;
+  uid: number | null;
+  useMock: boolean;
+}
 
 class OdooClient {
-  private config: OdooConfig;
+  private config: OdooConfig = {
+    url: '',
+    db: '',
+    username: '',
+    apiKey: '',
+    uid: null,
+    useMock: false,
+  };
+
   private latency: number = 0;
 
   constructor() {
-    this.config = this.loadConfig();
+    this.loadConfig();
   }
 
-  loadConfig(): OdooConfig {
-    const defaultConfig: OdooConfig = {
+  private loadConfig() {
+    const defaultConfig = {
       url: '',
       db: '',
       username: '',
       apiKey: '',
       uid: null,
-      useMock: false,
+      useMock: true,
     };
-
     const stored = sessionStorage.getItem('odoo_config');
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        this.config = { ...defaultConfig, ...parsed };
+        return;
       } catch (e) {
         console.error('Failed to parse odoo config');
       }
     }
-    return defaultConfig;
+    this.config = defaultConfig;
   }
 
   saveConfig(newConfig: Partial<OdooConfig>) {
@@ -109,6 +125,7 @@ class OdooClient {
       
       if (data.error) {
         const errorMsg = data.error.data?.message || data.error.message || 'Unknown Odoo error';
+        
         if (errorMsg.toLowerCase().includes('access denied') || errorMsg.toLowerCase().includes('authentication') || errorMsg.toLowerCase().includes('expected singleton')) {
           this.clearConfig();
           throw new Error(`Authentication Expired: ${errorMsg}`);
@@ -133,6 +150,7 @@ class OdooClient {
     }
 
     const uid = await this.jsonRpc('common', 'authenticate', [db, username, apiKey, {}]);
+    
     if (!uid) {
       throw new Error('Authentication failed: Invalid database, username, or API key.');
     }
@@ -168,7 +186,7 @@ class OdooClient {
     ]);
   }
 
-  // Helper Methods
+  // Helper Methods for backward compatibility or direct calls
   async getLeads() {
     return this.executeKw('crm.lead', 'search_read', [[['active', '=', true]]], {
       fields: ['id', 'name', 'partner_id', 'stage_id', 'expected_revenue', 'probability', 'phone', 'email_from'],
@@ -200,7 +218,7 @@ class OdooClient {
 
   // Mocks
   private mockRpc(service: string, method: string, params: any[]) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       setTimeout(() => {
         if (service === 'common' && method === 'authenticate') resolve(1);
         
@@ -212,21 +230,94 @@ class OdooClient {
             resolve([
               { id: 1, name: 'ERP Implementation', partner_id: [1, 'PT ABC Makmur'], stage_id: [1, 'New'], expected_revenue: 150000000, probability: 10, phone: '08123456789', email_from: 'info@abcmakmur.co.id' },
               { id: 2, name: 'Cloud Migration', partner_id: [2, 'CV Tech Solusindo'], stage_id: [2, 'Qualified'], expected_revenue: 75000000, probability: 50, phone: '628987654321', email_from: 'contact@techsol.id' },
-              { id: 3, name: 'Website Redesign', partner_id: [3, 'Toko Sejahtera'], stage_id: [3, 'Proposition'], expected_revenue: 25000000, probability: 80, phone: '08111222333', email_from: 'owner@sejahtera.com' },
-              { id: 4, name: 'Maintenance Contract', partner_id: [1, 'PT ABC Makmur'], stage_id: [4, 'Won'], expected_revenue: 50000000, probability: 100, phone: '08123456789', email_from: 'info@abcmakmur.co.id' },
             ]);
           } else if (model === 'account.move' && action === 'search_read') {
             resolve([
               { id: 101, name: 'INV/2023/0001', partner_id: [1, 'PT ABC Makmur'], invoice_date: '2023-10-01', amount_untaxed: 10000000, amount_tax: 1100000, amount_total: 11100000, payment_state: 'not_paid', state: 'posted' },
               { id: 102, name: 'INV/2023/0002', partner_id: [2, 'CV Tech Solusindo'], invoice_date: '2023-10-05', amount_untaxed: 25000000, amount_tax: 2750000, amount_total: 27750000, payment_state: 'paid', state: 'posted' },
-              { id: 103, name: 'INV/2023/0003', partner_id: [4, 'UD Maju Bersama'], invoice_date: '2023-10-15', amount_untaxed: 5000000, amount_tax: 550000, amount_total: 5550000, payment_state: 'partial', state: 'posted' },
             ]);
           } else if (model === 'product.template' && action === 'search_read') {
             resolve([
               { id: 201, name: 'ERP Enterprise License', default_code: 'LIC-ERP', list_price: 15000000, qty_available: 99, standard_price: 0 },
               { id: 202, name: 'Server Hardware Type A', default_code: 'HW-SRV-A', list_price: 35000000, qty_available: 2, standard_price: 25000000 },
-              { id: 203, name: 'Network Switch 24-port', default_code: 'HW-NET-24', list_price: 5500000, qty_available: 15, standard_price: 4000000 },
-              { id: 204, name: 'Consulting Hour', default_code: 'SRV-CSL', list_price: 1500000, qty_available: 1000, standard_price: 500000 },
+            ]);
+          } else if (model === 'ir.ui.menu' && action === 'search_read') {
+            resolve([
+              { id: 1, name: 'Sales', complete_name: 'Sales', action: 'ir.actions.act_window,101', child_id: [11], parent_id: false },
+              { id: 2, name: 'CRM', complete_name: 'CRM', action: 'ir.actions.act_window,102', child_id: [12], parent_id: false },
+              { id: 3, name: 'Invoicing', complete_name: 'Invoicing', action: 'ir.actions.act_window,103', child_id: [13], parent_id: false },
+              { id: 4, name: 'Settings (No Action)', complete_name: 'Settings', action: false, child_id: [14], parent_id: false },
+            ]);
+          } else if (model === 'ir.actions.act_window' && action === 'search_read') {
+            const domainArg = params[5] && params[5][0] ? params[5][0] : [];
+            let actId = null;
+            if (domainArg.length > 0 && domainArg[0][0] === 'id') {
+               actId = domainArg[0][2];
+            } else if (params[5] && params[5].length > 0) {
+               // Fallback if they pass raw ID array directly in kwargs or args
+               actId = Array.isArray(params[5]) && Array.isArray(params[5][0]) ? params[5][0][0] : null;
+            }
+
+            if (!actId && params[5] && params[5].length > 0) {
+               if (typeof params[5][0] === 'number') actId = params[5][0];
+            }
+            
+            // Try matching domain
+            if (params[5] && Array.isArray(params[5])) {
+               const idDomain = params[5].find((d: any) => d[0] === 'id');
+               if (idDomain) actId = idDomain[2];
+            }
+            
+            // Or raw array matching executeKw('ir.actions.act_window', 'search_read', [[['id', '=', 101]]])
+            if (Array.isArray(params[5]) && Array.isArray(params[5][0]) && params[5][0][0] === 'id') {
+               actId = params[5][0][2];
+            }
+
+            // A robust check for the mock
+            let finalId = parseInt(String(actId)) || 101;
+            const searchDomain = JSON.stringify(params[5] || []);
+            if (searchDomain.includes('101')) finalId = 101;
+            if (searchDomain.includes('102')) finalId = 102;
+            if (searchDomain.includes('103')) finalId = 103;
+
+            if (finalId === 101) resolve([{ id: 101, name: 'Sales Orders', res_model: 'sale.order', domain: "[('state', 'in', ['sale', 'done'])]", context: "{'default_state': 'sale'}", views: [['list', 'tree'], ['form', 'form']] }]);
+            else if (finalId === 102) resolve([{ id: 102, name: 'Pipeline', res_model: 'crm.lead', domain: "[]", context: "{}", views: [['kanban', 'kanban'], ['list', 'tree'], ['form', 'form']] }]);
+            else if (finalId === 103) resolve([{ id: 103, name: 'Invoices', res_model: 'account.move', domain: "[('move_type', '=', 'out_invoice')]", context: "{}", views: [['list', 'tree'], ['form', 'form']] }]);
+            else resolve([{ id: finalId, name: 'Template Action', res_model: 'product.template', domain: "[]", context: "{}", views: [['list', 'tree']] }]);
+          } else if (action === 'fields_get') {
+            if (model === 'sale.order') {
+               resolve({
+                  name: { string: 'Order Reference', type: 'char', required: true },
+                  partner_id: { string: 'Customer', type: 'many2one', relation: 'res.partner', required: true },
+                  date_order: { string: 'Order Date', type: 'datetime' },
+                  amount_total: { string: 'Total', type: 'monetary' },
+                  state: { string: 'Status', type: 'selection', selection: [['draft', 'Quotation'], ['sale', 'Sales Order']] },
+                  image_1920: { string: 'Image', type: 'binary' },
+                  order_line: { string: 'Order Lines', type: 'one2many', relation: 'sale.order.line' }
+               });
+            } else if (model === 'crm.lead') {
+               resolve({
+                  name: { string: 'Opportunity', type: 'char', required: true },
+                  partner_id: { string: 'Customer', type: 'many2one', relation: 'res.partner' },
+                  expected_revenue: { string: 'Expected Revenue', type: 'monetary' },
+                  probability: { string: 'Probability (%)', type: 'float' },
+                  active: { string: 'Active', type: 'boolean' }
+               });
+            } else if (model === 'account.move') {
+               resolve({
+                  name: { string: 'Number', type: 'char', readonly: true },
+                  partner_id: { string: 'Customer', type: 'many2one', relation: 'res.partner' },
+                  invoice_date: { string: 'Invoice Date', type: 'date' },
+                  amount_total: { string: 'Total', type: 'monetary' },
+                  payment_state: { string: 'Payment Status', type: 'selection', selection: [['not_paid', 'Not Paid'], ['paid', 'Paid']] }
+               });
+            } else {
+               resolve({ name: { string: 'Name', type: 'char' }});
+            }
+          } else if (model === 'sale.order' && action === 'search_read') {
+            resolve([
+              { id: 1, name: 'S0001', partner_id: [1, 'PT ABC Makmur'], date_order: '2023-10-01 10:00:00', amount_total: 15000000, state: 'sale' },
+              { id: 2, name: 'S0002', partner_id: [2, 'CV Tech Solusindo'], date_order: '2023-10-02 11:30:00', amount_total: 25000000, state: 'draft' }
             ]);
           } else if (action === 'create' || action === 'write') {
              resolve(true); // Mock success

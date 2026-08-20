@@ -81,10 +81,15 @@ export function Settings({ onConnect }: SettingsProps) {
         setShowManual(true);
       }
     } catch (error: any) {
-      if (error.code === 'auth/unauthorized-domain' || error.message.includes('requested action is invalid') || error.code === 'auth/invalid-action-code') {
+      if (error.code === 'auth/unauthorized-domain') {
          setTestResult({ 
            success: false, 
-           message: `Firebase Domain Error: Please add '${window.location.hostname}' to the Authorized Domains list in your Firebase Console (Auth -> Settings -> Authorized Domains).` 
+           message: `Firebase Domain Error: Please add '${window.location.hostname}' to the Authorized Domains list in your Firebase Console.` 
+         });
+      } else if (error.message.includes('requested action is invalid') || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/web-storage-unsupported') {
+         setTestResult({ 
+           success: false, 
+           message: `Browser security blocked the login popup because the app is running inside a preview frame. Please click the "Open in new tab" icon (↗️) at the top right of this preview window to sign in, or use Manual Settings below.` 
          });
       } else {
         setTestResult({ success: false, message: error.message || 'Google Sign-In failed.' });
