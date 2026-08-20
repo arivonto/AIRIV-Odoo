@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Settings } from './components/Settings';
 import { DynamicListView } from './components/DynamicListView';
+import { AIConsultantModal } from './components/AIConsultantModal';
 import { odooClient } from './services/odoo';
-import { Menu, X, Settings as SettingsIcon, Loader2, Database, LayoutGrid, AlertCircle, RefreshCw, ChevronDown, Package } from 'lucide-react';
+import { Menu, X, Settings as SettingsIcon, Loader2, Database, LayoutGrid, AlertCircle, RefreshCw, ChevronDown, Package, Bot } from 'lucide-react';
 
 export default function App() {
-  const [isConnected, setIsConnected] = useState(false);
+  const [isTerhubung, setIsTerhubung] = useState(false);
   const [latency, setLatency] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+
   
   const [allMenus, setAllMenus] = useState<Record<string, any>>({});
   const [rootMenus, setRootMenus] = useState<any[]>([]);
@@ -21,7 +24,7 @@ export default function App() {
   useEffect(() => {
     const config = odooClient.getConfig();
     if ((config.db && config.uid && config.apiKey) || config.useMock) {
-      setIsConnected(true);
+      setIsTerhubung(true);
     }
 
     const interval = setInterval(() => {
@@ -31,14 +34,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isConnected) {
+    if (isTerhubung) {
       loadMenus();
     } else {
       setAllMenus({});
       setRootMenus([]);
       setActiveTopMenuId('settings');
     }
-  }, [isConnected]);
+  }, [isTerhubung]);
 
   const loadMenus = async () => {
     setLoadingMenus(true);
@@ -198,19 +201,18 @@ export default function App() {
   };
 
   const handleDisconnect = () => {
-    odooClient.setConfig({ url: '', db: '', username: '', password: '', apiKey: '', session_id: '', useMock: false });
-    setIsConnected(false);
+    odooClient.clearConfig();
+    setIsTerhubung(false);
   };
 
   const renderContent = () => {
-    if (!isConnected || activeTopMenuId === 'settings') {
+    if (!isTerhubung || activeTopMenuId === 'settings') {
       return (
         <div className="flex-1 overflow-auto p-4 flex justify-center">
           <div className="w-full max-w-2xl">
             <Settings onConnect={() => {
-              setIsConnected(true);
-              loadMenus();
-              setActiveTopMenuId(null);
+              setIsTerhubung(true);
+              // loadMenus is called by useEffect on isTerhubung change
             }} />
           </div>
         </div>
@@ -301,10 +303,21 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-4 pl-4 shrink-0">
+          {isTerhubung && (
+            <button
+              onClick={() => setIsAIModalOpen(true)}
+              className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border border-indigo-200"
+            >
+              <Bot className="w-4 h-4" />
+              <span className="hidden sm:inline">Konsultan AI</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 border border-emerald-200 rounded-full hidden sm:flex">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-            <span className={`text-[11px] font-semibold uppercase tracking-wider ${isConnected ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {isConnected ? 'Connected' : 'Offline'}
+
+            <div className={`w-2 h-2 rounded-full ${isTerhubung ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+            <span className={`text-[11px] font-semibold uppercase tracking-wider ${isTerhubung ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {isTerhubung ? 'Terhubung' : 'Terputus'}
             </span>
           </div>
           
@@ -319,7 +332,7 @@ export default function App() {
             </span>
           )}
           
-          {isConnected && !odooClient.getConfig().useMock && (
+          {isTerhubung && !odooClient.getConfig().useMock && (
             <button 
               onClick={handleDisconnect}
               className="text-xs font-semibold text-rose-600 hover:text-rose-700 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded px-3 py-1 transition-colors"
@@ -389,7 +402,7 @@ export default function App() {
                 }`}
               >
                 <SettingsIcon className="w-4 h-4 text-slate-500 group-hover:text-slate-400 shrink-0" />
-                <span className="text-sm font-medium tracking-wide">Connection Settings</span>
+                <span className="text-sm font-medium tracking-wide">Pengaturan Koneksi</span>
               </button>
             </div>
           </div>
@@ -418,12 +431,20 @@ export default function App() {
         </div>
         <div className="flex gap-4">
           <span className="flex items-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span> 
-            RPC Status: {isConnected ? 'Active' : 'Inactive'}
+            <span className={`w-1.5 h-1.5 rounded-full ${isTerhubung ? 'bg-emerald-500' : 'bg-rose-500'}`}></span> 
+            RPC Status: {isTerhubung ? 'Active' : 'Inactive'}
           </span>
           <span>Asia/Jakarta (WIB)</span>
         </div>
       </footer>
+
+      <AIConsultantModal 
+        isOpen={isAIModalOpen} 
+        onClose={() => setIsAIModalOpen(false)} 
+        onApplySuccess={() => {
+          loadMenus();
+        }} 
+      />
     </div>
   );
 }

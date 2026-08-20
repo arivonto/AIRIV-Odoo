@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { odooClient } from '../services/odoo';
-import { ChevronLeft, Save, Loader2, Search } from 'lucide-react';
+import { ChevronLeft, Save, Loader2, Search, Trash2 } from 'lucide-react';
 
 interface DynamicFormViewProps {
   model: string;
@@ -79,6 +79,20 @@ export function DynamicFormView({ model, id, onClose }: DynamicFormViewProps) {
       setError(err.message || 'Failed to load form');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [deleting, setDeleting] = useState(false);
+  const handleDelete = async () => {
+    if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await odooClient.unlink(model, id);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Gagal menghapus data');
+      setDeleting(false);
     }
   };
 
@@ -226,7 +240,7 @@ export function DynamicFormView({ model, id, onClose }: DynamicFormViewProps) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-white rounded-lg shadow-sm border border-slate-200 m-4">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-4" />
-        <p className="text-slate-500">Loading form...</p>
+        <p className="text-slate-500">Memuat formulir...</p>
       </div>
     );
   }
@@ -250,17 +264,30 @@ export function DynamicFormView({ model, id, onClose }: DynamicFormViewProps) {
             <ChevronLeft className="w-4 h-4" />
           </button>
           <h2 className="text-lg font-bold text-slate-800 capitalize">
-            {id ? `Edit ${model.replace(/\./g, ' ')}` : `New ${model.replace(/\./g, ' ')}`}
+            {id ? `Edit ${model.replace(/\./g, ' ')}` : `Buat ${model.replace(/\./g, ' ')}`}
           </h2>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium text-sm transition-colors disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          <span>Save</span>
-        </button>
+        
+        <div className="flex items-center gap-2">
+          {id && (
+            <button 
+              onClick={handleDelete}
+              disabled={deleting || saving}
+              className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-md hover:bg-rose-100 font-medium text-sm transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              <span className="hidden sm:inline">Hapus</span>
+            </button>
+          )}
+          <button 
+            onClick={handleSave}
+            disabled={saving || deleting}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span>Simpan</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6">
@@ -276,7 +303,7 @@ export function DynamicFormView({ model, id, onClose }: DynamicFormViewProps) {
               <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 {fields[key].string || key}
                 {fields[key].required && <span className="text-rose-500">*</span>}
-                {fields[key].readonly && <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Readonly</span>}
+                {fields[key].readonly && <span className="text-[10px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">Hanya Baca</span>}
               </label>
               {renderFieldInput(key, fields[key])}
             </div>

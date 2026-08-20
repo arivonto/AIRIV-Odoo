@@ -175,7 +175,7 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
   }
 
   const columns = Object.keys(fields)
-    .filter(k => records.length > 0 && records[0].hasOwnProperty(k) && k !== 'id')
+    .filter(k => data.length > 0 && data[0].hasOwnProperty(k) && k !== 'id')
     .slice(0, 7); // Max 7 columns
 
   return (
@@ -202,7 +202,7 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search..." 
+              placeholder="Cari..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && loadMetadataAndData()}
@@ -214,7 +214,7 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium text-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Create</span>
+            <span className="hidden sm:inline">Buat</span>
           </button>
         </div>
       </div>
@@ -223,26 +223,26 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-4" />
-            <p>Loading records...</p>
+            <p>Memuat data...</p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full text-rose-600 p-8 text-center bg-rose-50/50">
             <AlertCircle className="w-12 h-12 mb-3 text-rose-400" />
             <p className="font-medium max-w-md">{error}</p>
           </div>
-        ) : records.length === 0 ? (
+        ) : data.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500 p-8 text-center bg-slate-50/50">
              <div className="w-16 h-16 mb-4 rounded-full bg-slate-100 flex items-center justify-center text-slate-300">
                <Search className="w-8 h-8" />
              </div>
-            <p className="font-semibold text-slate-600">No records found in this company / category</p>
-            <p className="text-sm mt-1 mb-4 text-slate-500">Try clearing filters or checking your access rights.</p>
+            <p className="font-semibold text-slate-600">Belum ada data tersedia di kategori ini</p>
+            <p className="text-sm mt-1 mb-4 text-slate-500">Data kosong atau Anda tidak memiliki hak akses.</p>
             <button 
               onClick={() => setIsCreating(true)}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 font-medium text-sm transition-colors"
             >
               <Plus className="w-4 h-4" />
-              <span>Create New</span>
+              <span>Buat Baru</span>
             </button>
           </div>
         ) : (
@@ -275,7 +275,7 @@ export function DynamicListView({ action, onRecordSelected }: DynamicListViewPro
 
       <div className="p-3 border-t border-slate-200 flex items-center justify-between bg-slate-50">
         <span className="text-sm text-slate-500">
-          Showing <span className="font-medium text-slate-900">{records.length > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-slate-900">{(page - 1) * limit + records.length}</span> records
+          Menampilkan <span className="font-medium text-slate-900">{records.length > 0 ? (page - 1) * limit + 1 : 0}</span> hingga <span className="font-medium text-slate-900">{(page - 1) * limit + data.length}</span> data
         </span>
         <div className="flex items-center gap-2">
           <button 

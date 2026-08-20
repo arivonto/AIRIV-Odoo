@@ -29,24 +29,21 @@ export function Settings({ onConnect }: SettingsProps) {
     setIsTesting(true);
     setTestResult(null);
     
-    // Hardcoded internal values
-    const hardcodedDb = "OdooAIRIV";
-    const hardcodedUrl = "https://odoo-api.airiv.id";
-    const useMock = false;
+    const db = "OdooAIRIV";
+    const url = "https://odoo-api.airiv.id";
     
-    // Save current values to config before testing
-    odooClient.saveConfig({ url: hardcodedUrl, db: hardcodedDb, username, apiKey, useMock });
+    odooClient.saveConfig({ url, db, username, apiKey });
     
     try {
-      const authResult = await odooClient.authenticate(hardcodedDb, username, apiKey);
+      const authResult = await odooClient.authenticate(db, username, apiKey);
       if (authResult && authResult.uid) {
-        setTestResult({ success: true, message: `Successfully connected! Welcome, ${authResult.name || username}` });
+        setTestResult({ success: true, message: `Berhasil masuk! Selamat datang, ${authResult.name || username}` });
         onConnect();
       } else {
-        setTestResult({ success: false, message: 'Authentication failed. Please check your credentials.' });
+        setTestResult({ success: false, message: 'Autentikasi gagal. Silakan periksa kredensial Anda.' });
       }
     } catch (err: any) {
-      setTestResult({ success: false, message: err.message || 'Connection error.' });
+      setTestResult({ success: false, message: err.message || 'Kesalahan koneksi.' });
     } finally {
       setIsTesting(false);
     }
@@ -69,15 +66,15 @@ export function Settings({ onConnect }: SettingsProps) {
             <CheckCircle className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-800">You are connected</h2>
-            <p className="text-slate-500 text-sm mt-1">Logged in as {config.username}</p>
+            <h2 className="text-xl font-semibold text-slate-800">Anda telah terhubung</h2>
+            <p className="text-slate-500 text-sm mt-1">Masuk sebagai {config.username}</p>
           </div>
           <button
             onClick={handleDisconnect}
             className="flex items-center gap-2 px-4 py-2 mt-4 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors text-sm font-medium"
           >
             <LogOut className="w-4 h-4" />
-            Disconnect
+            Keluar
           </button>
         </div>
       </div>
@@ -87,15 +84,15 @@ export function Settings({ onConnect }: SettingsProps) {
   return (
     <div className="max-w-md w-full mx-auto bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="border-b border-slate-200 bg-slate-50 p-8 text-center">
-        <h2 className="text-2xl font-bold text-slate-800">Odoo Login</h2>
-        <p className="text-slate-500 text-sm mt-2">Sign in to your ERP workspace</p>
+        <h2 className="text-2xl font-bold text-slate-800">Masuk ke Ruang Kerja Odoo</h2>
+        <p className="text-slate-500 text-sm mt-2">Sistem manajemen ERP terintegrasi AIRIV</p>
       </div>
       
       <div className="p-8">
         <form onSubmit={handleTestConnection} className="space-y-6">
           <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email / Username</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Alamat Email / Pengguna</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-slate-400" />
@@ -106,13 +103,13 @@ export function Settings({ onConnect }: SettingsProps) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-11 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm bg-white transition-shadow"
-                  placeholder="admin@example.com"
+                  placeholder="admin@airiv.id"
                 />
               </div>
             </div>
-
+            
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Kata Sandi</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <Key className="h-5 w-5 text-slate-400" />
@@ -142,14 +139,14 @@ export function Settings({ onConnect }: SettingsProps) {
               <div className="text-sm font-medium">{testResult.message}</div>
             </div>
           )}
-
+          
           <div className="pt-2">
             <button
               type="submit"
               disabled={isTesting || !username || !apiKey}
               className="w-full flex items-center justify-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isTesting ? 'Authenticating...' : 'Sign In'}
+              {isTesting ? 'Mengautentikasi...' : 'Masuk'}
             </button>
           </div>
         </form>
