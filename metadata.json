@@ -1,0 +1,6 @@
+{
+  "name": "AIRIV ERP Dashboard",
+  "description": "A production-ready React frontend dashboard connected to an Odoo 18 JSON-RPC backend.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
