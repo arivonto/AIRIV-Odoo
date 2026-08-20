@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { odooClient } from '../services/odoo';
 import { Server, User, Key, Database, CheckCircle, XCircle, LogOut, Eye, EyeOff, Settings2 } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, User as FirebaseUser } from 'firebase/auth';
+import { signInWithPopup, browserPopupRedirectResolver, User as FirebaseUser } from 'firebase/auth';
 
 interface SettingsProps {
   onConnect: () => void;
@@ -40,7 +40,7 @@ export function Settings({ onConnect }: SettingsProps) {
 
   const handleGoogleSignIn = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
       const email = result.user.email;
       
       if (email === 'arivonto@gmail.com') {
@@ -81,7 +81,14 @@ export function Settings({ onConnect }: SettingsProps) {
         setShowManual(true);
       }
     } catch (error: any) {
-      setTestResult({ success: false, message: error.message || 'Google Sign-In failed.' });
+      if (error.code === 'auth/unauthorized-domain' || error.message.includes('requested action is invalid') || error.code === 'auth/invalid-action-code') {
+         setTestResult({ 
+           success: false, 
+           message: `Firebase Domain Error: Please add '${window.location.hostname}' to the Authorized Domains list in your Firebase Console (Auth -> Settings -> Authorized Domains).` 
+         });
+      } else {
+        setTestResult({ success: false, message: error.message || 'Google Sign-In failed.' });
+      }
     }
   };
 
