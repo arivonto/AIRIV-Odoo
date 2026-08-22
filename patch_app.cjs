@@ -1,85 +1,27 @@
 const fs = require('fs');
 let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-const targetResolveAction = `  const resolveAction = async (menu: any) => {
-    setActiveAction(null);`;
+const oldHeader = `<header className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between text-white shrink-0 z-20 shadow-md">
+            <div className="flex items-center gap-3">
+              <span className="bg-rose-500 text-white text-xs font-bold px-2 py-1 rounded tracking-wide uppercase">Super Admin</span>
+              <span className="text-sm text-slate-300">Global Governance Mode</span>
+            </div>
+            <div className="relative">
+              <button 
+                onClick={() => setShowCompanyMenu(!showCompanyMenu)}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm transition-colors border border-slate-700"
+              >`;
 
-const replacementResolveAction = `  const [isResolving, setIsResolving] = useState(false);
-  const resolveAction = async (menu: any) => {
-    setIsResolving(true);
-    setActiveAction(null);`;
+const newHeader = `<header className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-6 bg-slate-900 border-b border-slate-800 text-white shrink-0 z-20 shadow-md">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <span className="bg-rose-500 text-white text-xs font-bold px-2 py-1 rounded tracking-wide uppercase">Super Admin</span>
+              <span className="text-sm text-slate-300 truncate">Global Governance Mode</span>
+            </div>
+            <div className="relative w-full sm:w-auto">
+              <button 
+                onClick={() => setShowCompanyMenu(!showCompanyMenu)}
+                className="flex items-center justify-between w-full sm:w-auto gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm transition-colors border border-slate-700"
+              >`;
 
-code = code.replace(targetResolveAction, replacementResolveAction);
-
-const targetResolveActionEnd1 = `    // Fallback if actionId missing or failed
-    if (fallbackModel) {
-      setActiveAction({ name: menu.name, res_model: fallbackModel, views: [['list', 'tree'], ['form', 'form']], domain: [], context: {} });
-    } else {
-      setActiveAction({ error: \`No valid action or fallback model found for "\${menu.name}".\` });
-    }
-  };`;
-
-const replacementResolveActionEnd1 = `    // Fallback if actionId missing or failed
-    if (fallbackModel) {
-      setActiveAction({ name: menu.name, res_model: fallbackModel, views: [['list', 'tree'], ['form', 'form']], domain: [], context: {} });
-    } else {
-      setActiveAction({ error: \`No valid action or fallback model found for "\${menu.name}".\` });
-    }
-    setIsResolving(false);
-  };`;
-code = code.replace(targetResolveActionEnd1, replacementResolveActionEnd1);
-
-const targetResolveActionEnd2 = `        if (loadedAction && loadedAction.res_model) {
-          setActiveAction(loadedAction);
-          return;
-        } else if (loadedAction && loadedAction.type) {
-           // Action exists but no res_model (e.g. client action)
-           if (fallbackModel) {
-              setActiveAction({ name: menu.name, res_model: fallbackModel, views: [['list', 'tree'], ['form', 'form']], domain: [], context: {} });
-           } else {
-              setActiveAction({ error: \`Action \${loadedAction.type} not fully supported here, and no fallback model available for \${menu.name}.\` });
-           }
-           return;
-        }`;
-
-const replacementResolveActionEnd2 = `        if (loadedAction && loadedAction.res_model) {
-          setActiveAction(loadedAction);
-          setIsResolving(false);
-          return;
-        } else if (loadedAction && loadedAction.type) {
-           // Action exists but no res_model (e.g. client action)
-           if (fallbackModel) {
-              setActiveAction({ name: menu.name, res_model: fallbackModel, views: [['list', 'tree'], ['form', 'form']], domain: [], context: {} });
-           } else {
-              setActiveAction({ error: \`Action \${loadedAction.type} not fully supported here, and no fallback model available for \${menu.name}.\` });
-           }
-           setIsResolving(false);
-           return;
-        }`;
-code = code.replace(targetResolveActionEnd2, replacementResolveActionEnd2);
-
-const targetRenderContent = `    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-        <LayoutGrid className="w-16 h-16 mb-4 text-slate-300" />
-        <p>Select a module to view records</p>
-      </div>
-    );`;
-
-const replacementRenderContent = `    if (isResolving) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-          <Loader2 className="w-10 h-10 mb-4 animate-spin text-indigo-400" />
-          <p>Loading module...</p>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-slate-500">
-        <LayoutGrid className="w-16 h-16 mb-4 text-slate-300" />
-        <p>Select a module to view records</p>
-      </div>
-    );`;
-code = code.replace(targetRenderContent, replacementRenderContent);
-
+code = code.replace(oldHeader, newHeader);
 fs.writeFileSync('src/App.tsx', code);
