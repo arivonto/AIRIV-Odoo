@@ -227,8 +227,8 @@ async function startServer() {
         return res.status(400).json({ error: "Missing imageBase64 in request body." });
       }
 
-      // Remove the prefix "data:image/jpeg;base64," if it exists
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+      const mimeType = imageBase64.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -239,22 +239,11 @@ async function startServer() {
               {
                 inlineData: {
                   data: base64Data,
-                  mimeType: "image/jpeg"
+                  mimeType: mimeType
                 }
               },
               {
-                text: `Extract structured data from this Indonesian KTP / National ID / Passport:
-     {
-       nik: string,
-       name: string,
-       address: string,
-       rtrw: string,
-       kel_desa: string,
-       kecamatan: string,
-       city: string,
-       province: string,
-       occupation: string
-     }`
+                text: "Extract all structured information from this ID document / KTP / Passport as strict JSON. Return only the JSON object with keys: nik, name, birth_place_date, address, rtrw, kel_desa, kecamatan, city, province, occupation."
               }
             ]
           }
@@ -278,7 +267,10 @@ async function startServer() {
         }
       });
       
-      const text = response.text;
+      let text = response.text;
+      if (text) {
+        text = text.replace(/^\`\`\`json\s*/i, '').replace(/\`\`\`\s*$/i, '');
+      }
       if (!text) throw new Error("No response from AI");
       let cleanText = text.trim();
       if (cleanText.startsWith('```json')) {

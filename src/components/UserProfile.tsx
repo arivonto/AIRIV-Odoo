@@ -59,8 +59,12 @@ export function UserProfile({ session }: { session: any }) {
       setOcrData(data);
       setScanStep('review');
     } catch (err: any) {
-      alert("Failed to extract ID details: " + err.message);
-      setScanStep('upload');
+      console.error("OCR Fetch Error Details:", err);
+      // Fallback: don't block user. Open review form with blank fields.
+      setOcrData({});
+      setIdToast("OCR extraction unavailable. Please enter details manually.");
+      setTimeout(() => setIdToast(''), 4000);
+      setScanStep('review');
     }
   };
 
