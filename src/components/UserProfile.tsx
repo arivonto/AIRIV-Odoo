@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, MapPin, Globe, Building, Shield, Edit3, X, Loader2, Check, Camera, UploadCloud, FileText } from 'lucide-react';
 import { odooService } from '../services/odoo';
+import { performKtpOcr, getGeminiApiKey } from '../services/gemini';
 
 export function UserProfile({ session }: { session: any }) {
   const [userData, setUserData] = useState<any>(null);
@@ -29,6 +30,9 @@ export function UserProfile({ session }: { session: any }) {
   const [isLoadingOCR, setIsLoadingOCR] = useState(false);
   const [idSaving, setIdSaving] = useState(false);
   const [idToast, setIdToast] = useState('');
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [pendingOcrImage, setPendingOcrImage] = useState<string | null>(null);
 
   const handleIdUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -65,16 +69,18 @@ export function UserProfile({ session }: { session: any }) {
   };
 
   const processIdImage = async (base64String: string) => {
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
+      setPendingOcrImage(base64String);
+      setShowApiKeyModal(true);
+      return;
+    }
+
     setScanStep('review');
     setIsLoadingOCR(true);
+    setIdToast('');
     try {
-      const res = await fetch('/api/ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64String })
-      });
-      if (!res.ok) throw new Error('OCR API failed');
-      const data = await res.json();
+      const data = await performKtpOcr(base64String);
       setFormData({
         name: data.name || '',
         nik: data.nik || '',
@@ -96,8 +102,7 @@ export function UserProfile({ session }: { session: any }) {
         province: '',
         occupation: ''
       });
-      setIdToast("OCR extraction unavailable. Please enter details manually.");
-      setTimeout(() => setIdToast(''), 4000);
+      setIdToast(err.message || "OCR extraction unavailable.");
     } finally {
       setIsLoadingOCR(false);
     }
@@ -556,8 +561,8 @@ export function UserProfile({ session }: { session: any }) {
       
       {/* Identity Scanner Modal */}
       {idToast && (
-        <div className="fixed bottom-4 right-4 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 z-[60]">
-          <Check className="w-5 h-5" />
+        <div className={`fixed bottom-4 right-4 ${idToast.toLowerCase().includes('error') || idToast.toLowerCase().includes('failed') || idToast.toLowerCase().includes('unavailable') ? 'bg-red-600' : 'bg-emerald-600'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 z-[60]`}>
+          {idToast.toLowerCase().includes('error') || idToast.toLowerCase().includes('failed') || idToast.toLowerCase().includes('unavailable') ? <Shield className="w-5 h-5" /> : <Check className="w-5 h-5" />}
           <p className="font-medium">{idToast}</p>
         </div>
       )}
