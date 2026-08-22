@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, MapPin, Globe, Building, Shield, Edit3, X, Loader2, Check, Camera, UploadCloud, FileText } from 'lucide-react';
 import { odooService } from '../services/odoo';
-import { performKtpOcr, getGeminiApiKey } from '../services/gemini';
+import { performKtpOcr, getGeminiApiKey, compressImage } from '../services/gemini';
 
 export function UserProfile({ session }: { session: any }) {
   const [userData, setUserData] = useState<any>(null);
@@ -34,15 +34,21 @@ export function UserProfile({ session }: { session: any }) {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [pendingOcrImage, setPendingOcrImage] = useState<string | null>(null);
 
-  const handleIdUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleIdUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setIdImageBase64(reader.result as string);
-        processIdImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setScanStep('processing');
+      setIsLoadingOCR(true);
+      try {
+        const compressedBase64 = await compressImage(file);
+        setIdImageBase64(compressedBase64);
+        processIdImage(compressedBase64);
+      } catch (err) {
+        console.error("Compression Error:", err);
+        setIdToast("Failed to process image");
+        setIsLoadingOCR(false);
+        setScanStep('upload');
+      }
     }
   };
 
@@ -283,6 +289,7 @@ export function UserProfile({ session }: { session: any }) {
                          <User className="w-10 h-10 text-indigo-300" />
                        </div>
                      )}
+
                      <div 
                         className="absolute inset-1 rounded-xl bg-slate-900/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         onClick={() => fileInputRef.current?.click()}
@@ -482,6 +489,13 @@ export function UserProfile({ session }: { session: any }) {
                          </button>
                        </div>
                      </div>
+                   </div>
+                 )}
+                 {scanStep === 'processing' && (
+                   <div className="py-20 flex flex-col items-center justify-center text-center">
+                     <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-4" />
+                     <h4 className="text-lg font-medium text-slate-800">Processing Document...</h4>
+                     <p className="text-slate-500 text-sm mt-1">Compressing image and extracting details...</p>
                    </div>
                  )}
 
