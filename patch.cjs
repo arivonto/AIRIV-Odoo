@@ -1,31 +1,39 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/App.tsx', 'utf8');
+const content = fs.readFileSync('/app/applet/src/services/odoo.ts', 'utf8');
+const target = `  async updateUserGroups(xmlIds: string[]) {
+    if (this.config.useMock) return true;
 
-const target = `      roots.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-      setRootMenus(roots);
-    } catch (e: any) {`;
+    const { uid } = this.config;
+    if (!uid) throw new Error('Not authenticated');
 
-const replacement = `      roots.sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
-      setRootMenus(roots);
-      
-      if (roots.length > 0) {
-        const firstRoot = roots[0];
-        setActiveTopMenuId(firstRoot.id);
-        
-        let terminalMenu = firstRoot;
-        while (terminalMenu.children && terminalMenu.children.length > 0) {
-           const childId = terminalMenu.children[0];
-           if (menuData[childId]) {
-             terminalMenu = menuData[childId];
-           } else {
-             break;
-           }
-        }
-        
-        setActiveSubMenuId(terminalMenu.id);
-        resolveAction(terminalMenu);
+    // 1. Fetch group IDs for the requested XML IDs
+    // We fetch all XML IDs for res.groups since they are usually a few hundred
+    const modelData = await this.executeKw('ir.model.data', 'search_read', [[['model', '=', 'res.groups']]], {
+      fields: ['module', 'name', 'res_id']
+    });
+
+    const targetGroupIds = modelData`;
+
+const replacement = `  async updateUserGroups(xmlIds: string[]) {
+    if (this.config.useMock) return true;
+
+    const { uid } = this.config;
+    if (!uid) throw new Error('Not authenticated');
+
+    let modelData;
+    try {
+      // 1. Fetch group IDs for the requested XML IDs
+      // We fetch all XML IDs for res.groups since they are usually a few hundred
+      modelData = await this.executeKw('ir.model.data', 'search_read', [[['model', '=', 'res.groups']]], {
+        fields: ['module', 'name', 'res_id']
+      });
+    } catch (e: any) {
+      if (e.message?.includes('ir.model.data') || e.message?.includes('Access Rights')) {
+        throw new Error('You do not have Administrator access rights in Odoo to apply this setup. Please log in with an Administrator account.');
       }
-    } catch (e: any) {`;
+      throw e;
+    }
 
-code = code.replace(target, replacement);
-fs.writeFileSync('src/App.tsx', code);
+    const targetGroupIds = modelData`;
+
+fs.writeFileSync('/app/applet/src/services/odoo.ts', content.replace(target, replacement));
